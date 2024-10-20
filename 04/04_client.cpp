@@ -1,70 +1,67 @@
-#include <assert.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdio.h>
-#include <errno.h>
+#include <cassert>
+#include <cerrno>
+#include <cstdlib>
+#include <cstring>
+#include <iostream>
+#include <stdexcept>
+#include <span>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
-#include <netinet/ip.h>
-
-
-static void msg(const char *msg) {
-    fprintf(stderr, "%s\n", msg);
-}
-
-static void die(const char *msg) {
-    int err = errno;
-    fprintf(stderr, "[%d] %s\n", err, msg);
-    abort();
-}
-
-static int32_t read_full(int fd, char *buf, size_t n) {
-    while (n > 0) {
-        ssize_t rv = read(fd, buf, n);
-        if (rv <= 0) {
-            return -1;  // error, or unexpected EOF
-        }
-        assert((size_t)rv <= n);
-        n -= (size_t)rv;
-        buf += rv;
-    }
-    return 0;
-}
-
-static int32_t write_all(int fd, const char *buf, size_t n) {
-    while (n > 0) {
-        ssize_t rv = write(fd, buf, n);
-        if (rv <= 0) {
-            return -1;  // error
-        }
-        assert((size_t)rv <= n);
-        n -= (size_t)rv;
-        buf += rv;
-    }
-    return 0;
-}
+#include <netinet/in.h>
 
 const size_t k_max_msg = 4096;
 
-static int32_t query(int fd, const char *text) {
-    uint32_t len = (uint32_t)strlen(text);
+static void msg(const std::string &msg) {
+    std::cerr << msg << std::endl;
+}
+
+[[noreturn]] void die(const std::string &msg) {
+    throw std::runtime_error(msg + ": " + std::strerror(errno));
+}
+
+static int32_t read_full(int fd, std::span<char> buf) {
+    while (!buf.empty()) {
+        ssize_t rv = read(fd, buf.data(), buf.size());
+        if (rv <= 0) {
+            return -1;  // error, or unexpected EOF
+        }
+        assert(static_cast<size_t>(rv) <= buf.size());
+        buf = buf.subspan(rv);
+    }
+    return 0;
+}
+
+static int32_t write_all(int fd, std::span<const char> buf) {
+    while (!buf.empty()) {
+        ssize_t rv = write(fd, buf.data(), buf.size());
+        if (rv <= 0) {
+            return -1;  // error
+        }
+        assert(static_cast<size_t>(rv) <= buf.size());
+        buf = buf.subspan(rv);
+    }
+    return 0;
+}
+
+static int32_t query(int fd, const std::string &text) {
+    uint32_t len = static_cast<uint32_t>(text.size());
     if (len > k_max_msg) {
         return -1;
     }
 
     char wbuf[4 + k_max_msg];
     memcpy(wbuf, &len, 4);  // assume little endian
-    memcpy(&wbuf[4], text, len);
-    if (int32_t err = write_all(fd, wbuf, 4 + len)) {
+    memcpy(&wbuf[4], text.data(), len);
+
+    if (int32_t err = write_all(fd, std::span(wbuf, 4 + len))) {
         return err;
     }
 
     // 4 bytes header
     char rbuf[4 + k_max_msg + 1];
     errno = 0;
-    int32_t err = read_full(fd, rbuf, 4);
+    int32_t err = read_full(fd, std::span(rbuf, 4));
     if (err) {
         if (errno == 0) {
             msg("EOF");
@@ -81,7 +78,7 @@ static int32_t query(int fd, const char *text) {
     }
 
     // reply body
-    err = read_full(fd, &rbuf[4], len);
+    err = read_full(fd, std::span(&rbuf[4], len));
     if (err) {
         msg("read() error");
         return err;
@@ -89,7 +86,7 @@ static int32_t query(int fd, const char *text) {
 
     // do something
     rbuf[4 + len] = '\0';
-    printf("server says: %s\n", &rbuf[4]);
+    std::cout << "server says: " << &rbuf[4] << std::endl;
     return 0;
 }
 
@@ -103,26 +100,21 @@ int main() {
     addr.sin_family = AF_INET;
     addr.sin_port = ntohs(1234);
     addr.sin_addr.s_addr = ntohl(INADDR_LOOPBACK);  // 127.0.0.1
-    int rv = connect(fd, (const struct sockaddr *)&addr, sizeof(addr));
+
+    int rv = connect(fd, reinterpret_cast<const sockaddr *>(&addr), sizeof(addr));
     if (rv) {
         die("connect");
     }
 
     // multiple requests
-    int32_t err = query(fd, "hello1");
-    if (err) {
-        goto L_DONE;
-    }
-    err = query(fd, "hello2");
-    if (err) {
-        goto L_DONE;
-    }
-    err = query(fd, "hello3");
-    if (err) {
-        goto L_DONE;
+    try {
+        if (query(fd, "hello1")) throw std::runtime_error("Query failed");
+        if (query(fd, "hello2")) throw std::runtime_error("Query failed");
+        if (query(fd, "hello3")) throw std::runtime_error("Query failed");
+    } catch (const std::exception &e) {
+        msg(e.what());
     }
 
-L_DONE:
     close(fd);
     return 0;
 }

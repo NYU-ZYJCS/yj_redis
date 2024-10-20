@@ -6,5 +6,5 @@ set(CMAKE_CXX_STANDARD 20)
 
 
 add_subdirectory(03)
-#add_subdirectory(04)
+add_subdirectory(04)
 
