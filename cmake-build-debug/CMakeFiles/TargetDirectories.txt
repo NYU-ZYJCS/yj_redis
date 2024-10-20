@@ -1,6 +1,0 @@
-/Users/yingjie/Desktop/redis/cmake-build-debug/CMakeFiles/edit_cache.dir
-/Users/yingjie/Desktop/redis/cmake-build-debug/CMakeFiles/rebuild_cache.dir
-/Users/yingjie/Desktop/redis/cmake-build-debug/03/CMakeFiles/server.dir
-/Users/yingjie/Desktop/redis/cmake-build-debug/03/CMakeFiles/client.dir
-/Users/yingjie/Desktop/redis/cmake-build-debug/03/CMakeFiles/edit_cache.dir
-/Users/yingjie/Desktop/redis/cmake-build-debug/03/CMakeFiles/rebuild_cache.dir
